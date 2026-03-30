@@ -236,8 +236,16 @@ def phase2_run_base_scenarios(N):
 # ===========================================================================
 
 def _normality_test(data, label):
-    """Apply Shapiro-Wilk (N<50) or Kolmogorov-Smirnov (N>=50) test."""
+    """Apply Shapiro-Wilk (N<50) or Kolmogorov-Smirnov (N>=50) test.
+
+    If the data is constant (zero variance), the test is skipped and the
+    data is treated as non-normal to avoid division-by-zero warnings from
+    scipy and numpy moment calculations.
+    """
     n = len(data)
+    if np.std(data) == 0:
+        print(f"    {label}: SKIPPED (constant data, std=0) -> NON-NORMAL")
+        return False, "Skipped (constant)", float("nan"), float("nan")
     if n < 50:
         stat, p = stats.shapiro(data)
         test_name = "Shapiro-Wilk"
@@ -435,9 +443,13 @@ def phase4_sensitivity_analysis(N):
 
         for direction, factor in [("+5%", 1 + PERTURB), ("-5%", 1 - PERTURB)]:
             P_new = P_base * factor
-            # Keep integer parameters as integers (e.g. fleet size)
+            # Keep integer parameters as integers (e.g. fleet size) and
+            # guarantee at least ±1 change so delta_P is never zero.
             if isinstance(P_base, int):
-                P_new = max(1, round(P_new))
+                P_new_rounded = max(1, round(P_new))
+                if P_new_rounded == P_base:
+                    P_new_rounded = P_base + 1 if factor > 1 else max(1, P_base - 1)
+                P_new = P_new_rounded
 
             kpis = []
             for seed in range(1, N + 1):
@@ -475,6 +487,11 @@ def phase4_sensitivity_analysis(N):
         if sub.empty:
             continue
         s_vals = sub["S"].values
+        # Drop NaN entries (e.g. when delta_P was zero for an integer parameter)
+        s_vals_finite = s_vals[~np.isnan(s_vals)]
+        if len(s_vals_finite) == 0:
+            print(f"  [WARN] Skipping '{label}' in Tornado diagram – all S values are NaN.")
+            continue
         # Keep both values; the bar spans from min to max
         s_lo = float(np.nanmin(s_vals))
         s_hi = float(np.nanmax(s_vals))
