@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from contextlib import redirect_stdout
 from scipy import stats
 
@@ -243,7 +244,7 @@ def _normality_test(data, label):
     scipy and numpy moment calculations.
     """
     n = len(data)
-    if np.std(data) == 0:
+    if np.std(data) < 1e-10:
         print(f"    {label}: SKIPPED (constant data, std=0) -> NON-NORMAL")
         return False, "Skipped (constant)", float("nan"), float("nan")
     if n < 50:
@@ -349,10 +350,10 @@ def phase3_hypothesis_testing(baseline_results, tug_results):
     report_df = pd.DataFrame(report).T.reset_index().rename(columns={"index": "KPI"})
     report_df.to_csv(os.path.join(RESULTS_DIR, "phase3_hypothesis_report.csv"), index=False)
 
-    # Plot KPI distributions
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    # --- 2-panel overlay figure (kept for a side-by-side comparison) ---
+    fig2, axes2 = plt.subplots(1, 2, figsize=(13, 5))
     for ax, (kpi_name, base_data, tug_data) in zip(
-        axes,
+        axes2,
         [
             ("Total Taxi Time (s)", base_ttt, tug_ttt),
             ("Engine-On Time (s)", base_eot, tug_eot),
@@ -369,12 +370,62 @@ def phase3_hypothesis_testing(baseline_results, tug_results):
         ax.legend()
         ax.grid(linestyle="--", alpha=0.3)
 
-    fig.suptitle("Phase 3 – KPI Distributions: BASELINE vs TUG", fontsize=13, fontweight="bold")
-    fig.tight_layout()
-    fig.savefig(os.path.join(FIGURES_DIR, "phase3_kpi_distributions.png"),
-                dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"\n  Distribution figure saved.")
+    fig2.suptitle("Phase 3 – KPI Distributions: BASELINE vs TUG", fontsize=13, fontweight="bold")
+    fig2.tight_layout()
+    fig2.savefig(os.path.join(FIGURES_DIR, "phase3_kpi_distributions.png"),
+                 dpi=150, bbox_inches="tight")
+    plt.close(fig2)
+
+    # --- 4-panel individual distribution figure ---
+    datasets = [
+        ("Total Taxi Time (s)", "BASELINE", base_ttt, "#FF9800",
+         report["Total Taxi Time (s)"]["base_normality_test"],
+         report["Total Taxi Time (s)"]["base_normality_p"]),
+        ("Total Taxi Time (s)", "TUG",      tug_ttt,  "#2196F3",
+         report["Total Taxi Time (s)"]["tug_normality_test"],
+         report["Total Taxi Time (s)"]["tug_normality_p"]),
+        ("Engine-On Time (s)",  "BASELINE", base_eot, "#FF9800",
+         report["Engine-On Time (s)"]["base_normality_test"],
+         report["Engine-On Time (s)"]["base_normality_p"]),
+        ("Engine-On Time (s)",  "TUG",      tug_eot,  "#2196F3",
+         report["Engine-On Time (s)"]["tug_normality_test"],
+         report["Engine-On Time (s)"]["tug_normality_p"]),
+    ]
+
+    fig4, axes4 = plt.subplots(2, 2, figsize=(14, 10))
+    for ax, (kpi_name, mode_label, data, color, test_name, p_val) in zip(
+        axes4.flat, datasets
+    ):
+        data_arr = np.asarray(data, dtype=float)
+        ax.hist(data_arr, bins="auto", alpha=0.7, color=color,
+                edgecolor="white", density=True, label=mode_label)
+
+        mu, sigma = float(np.mean(data_arr)), float(np.std(data_arr, ddof=1))
+        if sigma > 0:
+            x_range = np.linspace(mu - 4 * sigma, mu + 4 * sigma, 300)
+            ax.plot(x_range, stats.norm.pdf(x_range, mu, sigma),
+                    color="black", linewidth=1.5, linestyle="--", label="Normal fit")
+        ax.axvline(mu, color="red", linewidth=1.2, linestyle=":", label=f"Mean={mu:.2f}")
+
+        if not math.isnan(p_val):
+            norm_str = f"Normal (p={p_val:.4f})" if p_val >= ALPHA else f"Non-normal (p={p_val:.4f})"
+        else:
+            norm_str = "Constant data – test skipped"
+        ax.set_title(f"{kpi_name}  [{mode_label}]\n"
+                     f"μ={mu:.2f}  σ={sigma:.2f}   {test_name}: {norm_str}",
+                     fontsize=10)
+        ax.set_xlabel(kpi_name)
+        ax.set_ylabel("Density")
+        ax.legend(fontsize=8)
+        ax.grid(linestyle="--", alpha=0.3)
+
+    fig4.suptitle("Phase 3 – Individual Distribution Plots (4 datasets)",
+                  fontsize=13, fontweight="bold")
+    fig4.tight_layout()
+    fig4.savefig(os.path.join(FIGURES_DIR, "phase3_individual_distributions.png"),
+                 dpi=150, bbox_inches="tight")
+    plt.close(fig4)
+    print(f"\n  Distribution figures saved.")
     print(f"  Report saved to {RESULTS_DIR}/phase3_hypothesis_report.csv")
 
     return report
@@ -493,8 +544,8 @@ def phase4_sensitivity_analysis(N):
             print(f"  [WARN] Skipping '{label}' in Tornado diagram – all S values are NaN.")
             continue
         # Keep both values; the bar spans from min to max
-        s_lo = float(np.nanmin(s_vals))
-        s_hi = float(np.nanmax(s_vals))
+        s_lo = float(np.min(s_vals_finite))
+        s_hi = float(np.max(s_vals_finite))
         tornado_rows.append({"Parameter": label, "S_lo": s_lo, "S_hi": s_hi,
                               "S_abs_max": max(abs(s_lo), abs(s_hi))})
 
@@ -527,7 +578,6 @@ def phase4_sensitivity_analysis(N):
                  fontsize=13, fontweight="bold")
 
     # Legend
-    from matplotlib.patches import Patch
     legend_elements = [Patch(facecolor=colors_pos, label="+5% perturbation"),
                        Patch(facecolor=colors_neg, label="-5% perturbation")]
     ax.legend(handles=legend_elements, loc="lower right")
