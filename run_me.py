@@ -173,6 +173,7 @@ def run_airport_simulation(config):
             - simulation_time   : total simulation duration in seconds (int/float)
             - visualization     : whether to show the pygame window (bool)
             - visualization_speed : pygame frame delay in seconds (float, optional)
+            - seed              : random seed for reproducibility (int, optional)
     RETURNS:
         Dictionary containing 'aircraft' kpis, 'tugs' kpis, and overall 'throughput'.
     """
@@ -189,6 +190,11 @@ def run_airport_simulation(config):
     sim_time = config.get("simulation_time", 1000)
     show_vis = config.get("visualization", False)
     vis_speed = config.get("visualization_speed", 0.1)
+    seed = config.get("seed", None)
+
+    # Set random seed for reproducibility if provided
+    if seed is not None:
+        random.seed(seed)
 
     # =============================================================================
     # 0. Initialization
