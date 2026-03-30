@@ -75,12 +75,10 @@ def _kpi_series(results, kpi_col):
 
 def phase1_convergence(convergence_window=10, cv_threshold=0.01):
     """
-    Run the worst-case scenario iteratively until the Coefficient of Variation
+    Run the base scenario iteratively until the Coefficient of Variation
     of the system-average Total Taxi Time stabilises.
 
-    The worst-case scenario uses the highest variability parameters:
-    - Minimum spawn interval (peak traffic)
-    - Maximum variance in stochastic delays
+    The base scenario uses the parameters defined in BASE_CONFIG.
 
     Convergence criterion: CV fluctuates by less than *cv_threshold* (1 %)
     across *convergence_window* (10) consecutive runs.
@@ -96,14 +94,6 @@ def phase1_convergence(convergence_window=10, cv_threshold=0.01):
     print("PHASE 1 – Simulation Stability and Convergence Analysis")
     print("=" * 60)
 
-    # Worst-case scenario: peak traffic, highest delay variance
-    worst_case = {
-        **BASE_CONFIG,
-        "mode": "TUG",
-        "spawn_interval": 5.0,    # most traffic
-        "variance_delay": 2.0,    # highest variance
-    }
-
     kpi_values = []      # cumulative list of mean Total Taxi Time per run
     cv_history = []      # CV after each run
 
@@ -112,7 +102,7 @@ def phase1_convergence(convergence_window=10, cv_threshold=0.01):
 
     while not converged:
         run_idx += 1
-        cfg = {**worst_case, "seed": run_idx}
+        cfg = {**BASE_CONFIG, "seed": run_idx}
         results = _silent_run(cfg)
         mean_tt = _mean_taxi_time(results)
         if not math.isnan(mean_tt):
@@ -399,9 +389,11 @@ def phase4_sensitivity_analysis(N):
 
     Parameters perturbed:
       - number_of_tugs  (tug fleet size)
-      - tug_speed
-      - variance_delay  (battery-discharge / delay variance proxy)
-      - tug_comm_dist   (conflict detection radius)
+      - tug_speed       (tug movement speed)
+      - variance_delay  (variance of stochastic delays)
+      - tug_comm_dist   (conflict detection / communication radius)
+      - mean_delay      (mean stochastic delay per aircraft)
+      - spawn_interval  (seconds between scheduled aircraft)
 
     Returns
     -------
